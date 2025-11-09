@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import os
 import subprocess
+import sys
 
-# Configuration 
+# Configuration
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 SCRIPT_PATH = os.path.join(BASE_DIR, "src", "mesh_processing.py")
@@ -19,16 +20,16 @@ def main():
         print("No .obj files found in the 'data/' folder.")
         return
 
-    print(f"🔍 Found {len(obj_files)} OBJ files: {', '.join(obj_files)}\n")
-
+    print(f"Found {len(obj_files)} OBJ files: {', '.join(obj_files)}\n")
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-    # Processing Loop 
+    # Processing Loop
     for obj_file in obj_files:
         input_path = os.path.join(DATA_DIR, obj_file)
         print(f"Processing {obj_file} ...")
+
         cmd = [
-            "python",
+            sys.executable,          
             SCRIPT_PATH,
             "--input", input_path,
             "--output", OUTPUT_DIR,
