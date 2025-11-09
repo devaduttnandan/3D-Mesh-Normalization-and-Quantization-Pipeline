@@ -134,7 +134,7 @@ def visualize_comparison(mesh1, mesh2, title1="Original", title2="Processed", sa
     plt.tight_layout()
     if save_path:
         plt.savefig(save_path, dpi=150)
-        print(f"🖼️ Saved comparison: {save_path}")
+        print(f"Saved comparison: {save_path}")
     plt.close()
 
 def save_mesh_screenshot(mesh, filepath):
@@ -231,12 +231,12 @@ def process_one_mesh(input_path, output_root='./output', n_bins=1024, do_visuali
         f.write(f"  MSE per axis: {mse_axes_us}\n  Overall MSE: {mse_overall_us:.8e}\n\n")
         f.write("Conclusion:\n")
         if mse_overall_mm < mse_overall_us:
-            f.write("  → Min-Max normalization performed better.\n")
+            f.write(" Min-Max normalization performed better.\n")
         elif mse_overall_us < mse_overall_mm:
-            f.write("  → Unit Sphere normalization performed better.\n")
+            f.write("  Unit Sphere normalization performed better.\n")
         else:
-            f.write("  → Both performed similarly.\n")
-    print(f"🧾 Summary saved: {summary_path}")
+            f.write("  Both performed similarly.\n")
+    print(f"Summary saved: {summary_path}")
     print(f"\nAll results saved in: {out}")
 
 #Main Entry
