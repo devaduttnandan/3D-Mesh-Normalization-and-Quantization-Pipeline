@@ -1,6 +1,6 @@
 # Mixar Assignment — Mesh Normalization, Quantization & Error Analysis
 
-## 🧠 Overview
+## Overview
 This project implements **Tasks 1–3** of the Mixar assignment using Python and the Trimesh / Open3D libraries.  
 It performs the following operations on 3D `.obj` mesh files:
 
@@ -25,4 +25,18 @@ pip install -r requirements.txt
 ```bash
 python run_all.py
 ```
+
+## Run on a single mesh (with 3D visualizations)
+```bash
+python src/mesh_processing.py --input data/girl.obj --visualize
+```
+
+## Observations
+1. **Min–Max normalization** generally gives lower reconstruction error for structured or symmetric models (e.g., girl.obj, person.obj, table.obj).
+
+2. **Unit Sphere normalization** performs better for irregular and organic meshes (e.g., branch.obj, fence.obj).
+
+3. **Quantization** to 1024 bins provides a good balance between precision and file size.
+
+4. **Across all models**, reconstruction MSE remains below 10⁻⁴, showing high accuracy.
 
