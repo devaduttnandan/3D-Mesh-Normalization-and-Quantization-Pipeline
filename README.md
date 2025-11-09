@@ -14,6 +14,8 @@ It performs the following operations on 3D `.obj` mesh files:
 
 ## Setup
 ```bash
+git clone https://github.com/devaduttnandan/3D-Mesh-Normalization-and-Quantization-Pipeline.git
+cd 3D-Mesh-Normalization-and-Quantization-Pipeline
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
