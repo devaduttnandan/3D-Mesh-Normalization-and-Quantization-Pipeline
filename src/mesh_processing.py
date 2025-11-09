@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 import os
 import argparse
+import open3d as o3d
 import numpy as np
 import trimesh
 import matplotlib.pyplot as plt
 
+# Utility 
 def ensure_dir(path):
     os.makedirs(path, exist_ok=True)
 
@@ -21,7 +23,7 @@ def save_mesh(mesh, path):
     mesh.export(path)
     print(f"Saved: {path}")
 
-
+# Stats 
 def mesh_vertex_stats(vertices):
     stats = {}
     stats['n_vertices'] = vertices.shape[0]
@@ -33,14 +35,14 @@ def mesh_vertex_stats(vertices):
 
 def print_stats(name, stats):
     print(f"\n--- {name} ---")
-    print(f"Number of vertices: {stats['n_vertices']}")
-    print(f"Min per axis: x={stats['min'][0]:.6f}, y={stats['min'][1]:.6f}, z={stats['min'][2]:.6f}")
-    print(f"Max per axis: x={stats['max'][0]:.6f}, y={stats['max'][1]:.6f}, z={stats['max'][2]:.6f}")
-    print(f"Mean per axis: x={stats['mean'][0]:.6f}, y={stats['mean'][1]:.6f}, z={stats['mean'][2]:.6f}")
-    print(f"Std per axis:  x={stats['std'][0]:.6f}, y={stats['std'][1]:.6f}, z={stats['std'][2]:.6f}")
+    print(f"Vertices: {stats['n_vertices']}")
+    print(f"Min per axis: {stats['min']}")
+    print(f"Max per axis: {stats['max']}")
+    print(f"Mean per axis: {stats['mean']}")
+    print(f"Std per axis:  {stats['std']}")
 
+# Normalization
 def normalize_minmax(vertices, a=0.0, b=1.0):
-    """Min-Max normalize separately per axis into [a,b]. Returns normalized verts and params."""
     v_min = vertices.min(axis=0)
     v_max = vertices.max(axis=0)
     denom = np.where(v_max - v_min == 0, 1.0, (v_max - v_min))
@@ -59,12 +61,8 @@ def denormalize_minmax(normalized_vertices, params):
 def normalize_unit_sphere(vertices):
     centroid = vertices.mean(axis=0)
     centered = vertices - centroid
-    # compute max distance
     max_dist = np.max(np.linalg.norm(centered, axis=1))
-    if max_dist == 0:
-        scale = 1.0
-    else:
-        scale = 1.0 / max_dist
+    scale = 1.0 / max_dist if max_dist != 0 else 1.0
     normalized = centered * scale
     params = {'method': 'unit_sphere', 'centroid': centroid, 'scale': scale}
     return normalized, params
@@ -74,22 +72,21 @@ def denormalize_unit_sphere(norm_vertices, params):
     centroid = params['centroid']
     return (norm_vertices / scale) + centroid
 
+# Quantization
 def quantize_normalized(norm_vertices, n_bins=1024):
-
     clamped = np.clip(norm_vertices, 0.0, 1.0)
-    q = np.floor(clamped * (n_bins - 1.0) + 0.5).astype(np.int64)  # rounding
+    q = np.floor(clamped * (n_bins - 1.0) + 0.5).astype(np.int64)
     return q
 
 def dequantize(q, n_bins=1024):
     return (q.astype(np.float64)) / (n_bins - 1.0)
 
-
+# Error Calculation
 def compute_mse_per_axis(original, reconstructed):
     diffs = original - reconstructed
     mse_axes = np.mean(diffs ** 2, axis=0)
     mse_overall = np.mean(np.sum(diffs ** 2, axis=1))
     return mse_axes, mse_overall
-
 
 def plot_errors(mse_axes_minmax, mse_axes_unit, out_folder, mesh_name):
     ensure_dir(out_folder)
@@ -99,10 +96,10 @@ def plot_errors(mse_axes_minmax, mse_axes_unit, out_folder, mesh_name):
 
     plt.figure(figsize=(6,4))
     plt.bar(x - width/2, mse_axes_minmax, width=width, label='Min-Max')
-    plt.bar(x + width/2, mse_axes_unit, width=width, label='Unit-Sphere')
+    plt.bar(x + width/2, mse_axes_unit, width=width, label='Unit Sphere')
     plt.xticks(x, axes)
     plt.ylabel('MSE (per axis)')
-    plt.title(f'Reconstruction MSE per axis — {mesh_name}')
+    plt.title(f'Reconstruction MSE — {mesh_name}')
     plt.legend()
     outpath = os.path.join(out_folder, f"{mesh_name}_mse_per_axis.png")
     plt.tight_layout()
@@ -110,7 +107,52 @@ def plot_errors(mse_axes_minmax, mse_axes_unit, out_folder, mesh_name):
     plt.close()
     print(f"Saved error plot: {outpath}")
 
+# Visualization
+def visualize_mesh(mesh, title="3D Mesh"):
+    
+    print(f"Visualizing: {title}")
+    mesh_o3d = o3d.geometry.TriangleMesh(
+        vertices=o3d.utility.Vector3dVector(mesh.vertices),
+        triangles=o3d.utility.Vector3iVector(mesh.faces)
+    )
+    mesh_o3d.compute_vertex_normals()
+    mesh_o3d.paint_uniform_color([0.8, 0.8, 0.8])
+    o3d.visualization.draw_geometries([mesh_o3d], window_name=title)
 
+def visualize_comparison(mesh1, mesh2, title1="Original", title2="Processed", save_path=None):
+    fig = plt.figure(figsize=(10, 5))
+    ax1 = fig.add_subplot(121, projection='3d')
+    ax1.scatter(mesh1.vertices[:,0], mesh1.vertices[:,1], mesh1.vertices[:,2], s=1, color='blue')
+    ax1.set_title(title1)
+    ax1.axis('off')
+
+    ax2 = fig.add_subplot(122, projection='3d')
+    ax2.scatter(mesh2.vertices[:,0], mesh2.vertices[:,1], mesh2.vertices[:,2], s=1, color='red')
+    ax2.set_title(title2)
+    ax2.axis('off')
+
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=150)
+        print(f"🖼️ Saved comparison: {save_path}")
+    plt.close()
+
+def save_mesh_screenshot(mesh, filepath):
+    vis = o3d.visualization.Visualizer()
+    vis.create_window(visible=False)
+    mesh_o3d = o3d.geometry.TriangleMesh(
+        vertices=o3d.utility.Vector3dVector(mesh.vertices),
+        triangles=o3d.utility.Vector3iVector(mesh.faces)
+    )
+    mesh_o3d.compute_vertex_normals()
+    vis.add_geometry(mesh_o3d)
+    vis.poll_events()
+    vis.update_renderer()
+    vis.capture_screen_image(filepath)
+    vis.destroy_window()
+    print(f"Screenshot saved: {filepath}")
+
+# Main Processing
 def process_one_mesh(input_path, output_root='./output', n_bins=1024, do_visualize=False):
     mesh_name = os.path.splitext(os.path.basename(input_path))[0]
     out = os.path.join(output_root, mesh_name)
@@ -123,101 +165,94 @@ def process_one_mesh(input_path, output_root='./output', n_bins=1024, do_visuali
     stats_orig = mesh_vertex_stats(vertices)
     print_stats("Original Mesh", stats_orig)
     save_mesh(mesh, os.path.join(out, f"{mesh_name}_original.obj"))
-    norm_mm, params_mm = normalize_minmax(vertices, a=0.0, b=1.0)
+
+    # Visualize Original
+    if do_visualize:
+        visualize_mesh(mesh, "Original Mesh")
+        save_mesh_screenshot(mesh, os.path.join(out, f"{mesh_name}_original.png"))
+
+    #Min-Max Normalization
+    norm_mm, params_mm = normalize_minmax(vertices)
     mesh_norm_mm = trimesh.Trimesh(vertices=norm_mm, faces=faces, process=False)
     save_mesh(mesh_norm_mm, os.path.join(out, f"{mesh_name}_normalized_minmax.obj"))
-    q_mm = quantize_normalized(norm_mm, n_bins=n_bins)  # integers in [0, n_bins-1]
-    dq_mm = dequantize(q_mm, n_bins=n_bins)
-    mesh_q_mm = trimesh.Trimesh(vertices=dq_mm, faces=faces, process=False)
-    save_mesh(mesh_q_mm, os.path.join(out, f"{mesh_name}_quantized_minmax.obj"))
+
+    if do_visualize:
+        visualize_comparison(mesh, mesh_norm_mm, "Original", "Min-Max Normalized",
+                             os.path.join(out, f"{mesh_name}_compare_minmax.png"))
+        save_mesh_screenshot(mesh_norm_mm, os.path.join(out, f"{mesh_name}_normalized_minmax.png"))
+
+    # Quantization + Reconstruction
+    q_mm = quantize_normalized(norm_mm, n_bins=n_bins)
+    reconstructed_norm_mm = dequantize(q_mm, n_bins=n_bins)
+    reconstructed_mm = denormalize_minmax(reconstructed_norm_mm, params_mm)
+    mesh_rec_mm = trimesh.Trimesh(vertices=reconstructed_mm, faces=faces, process=False)
+    save_mesh(mesh_rec_mm, os.path.join(out, f"{mesh_name}_reconstructed_minmax.obj"))
+
+    if do_visualize:
+        visualize_comparison(mesh, mesh_rec_mm, "Original", "Reconstructed (Min-Max)",
+                             os.path.join(out, f"{mesh_name}_compare_reconstructed_minmax.png"))
+
+    #Unit Sphere Normalization 
     norm_us_raw, params_us = normalize_unit_sphere(vertices)
     remapped_us = (norm_us_raw + 1.0) / 2.0
     mesh_norm_us = trimesh.Trimesh(vertices=norm_us_raw, faces=faces, process=False)
     save_mesh(mesh_norm_us, os.path.join(out, f"{mesh_name}_normalized_unit_sphere.obj"))
 
+    if do_visualize:
+        visualize_comparison(mesh, mesh_norm_us, "Original", "Unit Sphere Normalized",
+                             os.path.join(out, f"{mesh_name}_compare_unit_sphere.png"))
+        save_mesh_screenshot(mesh_norm_us, os.path.join(out, f"{mesh_name}_normalized_unit_sphere.png"))
+
+    # Quantization + Reconstruction
     q_us = quantize_normalized(remapped_us, n_bins=n_bins)
     dq_us_remapped = dequantize(q_us, n_bins=n_bins)
     dq_us = dq_us_remapped * 2.0 - 1.0
-    mesh_q_us = trimesh.Trimesh(vertices=dq_us, faces=faces, process=False)
-    save_mesh(mesh_q_us, os.path.join(out, f"{mesh_name}_quantized_unit_sphere.obj"))
-
-    reconstructed_norm_mm = dequantize(q_mm, n_bins=n_bins)  # in [0,1]
-    reconstructed_mm = denormalize_minmax(reconstructed_norm_mm, params_mm)
-    mesh_rec_mm = trimesh.Trimesh(vertices=reconstructed_mm, faces=faces, process=False)
-    save_mesh(mesh_rec_mm, os.path.join(out, f"{mesh_name}_reconstructed_minmax.obj"))
-
-    rec_remapped_us = dequantize(q_us, n_bins=n_bins)  # in [0,1]
-    rec_us = rec_remapped_us * 2.0 - 1.0  # back to [-1,1]
-    reconstructed_us = denormalize_unit_sphere(rec_us, params_us)
+    reconstructed_us = denormalize_unit_sphere(dq_us, params_us)
     mesh_rec_us = trimesh.Trimesh(vertices=reconstructed_us, faces=faces, process=False)
     save_mesh(mesh_rec_us, os.path.join(out, f"{mesh_name}_reconstructed_unit_sphere.obj"))
 
+    if do_visualize:
+        visualize_comparison(mesh, mesh_rec_us, "Original", "Reconstructed (Unit Sphere)",
+                             os.path.join(out, f"{mesh_name}_compare_reconstructed_unit_sphere.png"))
+
+    # Compute Errors
     mse_axes_mm, mse_overall_mm = compute_mse_per_axis(vertices, reconstructed_mm)
     mse_axes_us, mse_overall_us = compute_mse_per_axis(vertices, reconstructed_us)
 
-    print("\n--- Reconstruction Errors ---")
-    print(f"Min-Max MSE per axis: x={mse_axes_mm[0]:.8e}, y={mse_axes_mm[1]:.8e}, z={mse_axes_mm[2]:.8e}")
-    print(f"Min-Max overall MSE: {mse_overall_mm:.8e}")
-    print(f"Unit-Sphere MSE per axis: x={mse_axes_us[0]:.8e}, y={mse_axes_us[1]:.8e}, z={mse_axes_us[2]:.8e}")
-    print(f"Unit-Sphere overall MSE: {mse_overall_us:.8e}")
-
     plot_errors(mse_axes_mm, mse_axes_us, out, mesh_name)
 
-    summary_lines = [
-        f"Mesh: {mesh_name}",
-        f"Vertices: {stats_orig['n_vertices']}",
-        "",
-        "Min-Max normalization:",
-        f"  MSE per axis: x={mse_axes_mm[0]:.8e}, y={mse_axes_mm[1]:.8e}, z={mse_axes_mm[2]:.8e}",
-        f"  Overall MSE: {mse_overall_mm:.8e}",
-        "",
-        "Unit-Sphere normalization:",
-        f"  MSE per axis: x={mse_axes_us[0]:.8e}, y={mse_axes_us[1]:.8e}, z={mse_axes_us[2]:.8e}",
-        f"  Overall MSE: {mse_overall_us:.8e}",
-        "",
-        "Short conclusion:",
-    ]
-
-    if mse_overall_mm < mse_overall_us:
-        summary_lines.append("  Min-Max normalization + uniform quantization produced lower overall MSE for this mesh.")
-    elif mse_overall_us < mse_overall_mm:
-        summary_lines.append("  Unit-Sphere normalization + uniform quantization produced lower overall MSE for this mesh.")
-    else:
-        summary_lines.append("  Both normalization methods produced similar overall MSE for this mesh.")
-
-    summary_lines.append("")
-    summary_lines.append("Notes:")
-    summary_lines.append("  - Min-Max preserves per-axis scale; unit-sphere preserves radial structure.")
-    summary_lines.append("  - Quantization uses rounding to the nearest of 1024 bins per axis (after mapping to [0,1]).")
-    summary_lines.append("  - For more robust comparisons, run the same pipeline on multiple meshes and compare errors.")
-
+    # Save Summary 
     summary_path = os.path.join(out, f"{mesh_name}_summary.txt")
     with open(summary_path, 'w') as f:
-        f.write('\n'.join(summary_lines))
-    print(f"\nSaved summary: {summary_path}")
+        f.write(f"Mesh: {mesh_name}\nVertices: {stats_orig['n_vertices']}\n\n")
+        f.write("Min-Max Normalization:\n")
+        f.write(f"  MSE per axis: {mse_axes_mm}\n  Overall MSE: {mse_overall_mm:.8e}\n\n")
+        f.write("Unit Sphere Normalization:\n")
+        f.write(f"  MSE per axis: {mse_axes_us}\n  Overall MSE: {mse_overall_us:.8e}\n\n")
+        f.write("Conclusion:\n")
+        if mse_overall_mm < mse_overall_us:
+            f.write("  → Min-Max normalization performed better.\n")
+        elif mse_overall_us < mse_overall_mm:
+            f.write("  → Unit Sphere normalization performed better.\n")
+        else:
+            f.write("  → Both performed similarly.\n")
+    print(f"🧾 Summary saved: {summary_path}")
+    print(f"\nAll results saved in: {out}")
 
-    print("\nAll outputs saved in:", out)
-    return {
-        'mse_axes_mm': mse_axes_mm, 'mse_overall_mm': mse_overall_mm,
-        'mse_axes_us': mse_axes_us, 'mse_overall_us': mse_overall_us,
-        'out_folder': out
-    }
-
-
+#Main Entry
 def main():
-    parser = argparse.ArgumentParser(description="Mesh normalization, quantization, reconstruction and error analysis (single example).")
-    parser.add_argument('--input', '-i', required=False,
-                        help="Path to input .obj mesh. Defaults to /mnt/data/girl.obj", 
-                        default="/mnt/data/girl.obj")
-    parser.add_argument('--output', '-o', required=False, help="Output folder", default="./output")
+    parser = argparse.ArgumentParser(description="3D Mesh Normalization, Quantization & Visualization Pipeline")
+    parser.add_argument('--input', '-i', required=False, default="/mnt/data/girl.obj", help="Input .obj file path")
+    parser.add_argument('--output', '-o', default="./output", help="Output folder")
     parser.add_argument('--bins', '-b', type=int, default=1024, help="Quantization bins")
+    parser.add_argument('--visualize', '-v', action='store_true', help="Enable 3D visualizations")
     args = parser.parse_args()
 
     if not os.path.exists(args.input):
         raise FileNotFoundError(f"Input file not found: {args.input}")
 
     print(f"Processing: {args.input}")
-    process_one_mesh(args.input, output_root=args.output, n_bins=args.bins)
+    process_one_mesh(args.input, output_root=args.output, n_bins=args.bins, do_visualize=args.visualize)
 
 if __name__ == '__main__':
     main()
